@@ -1,6 +1,8 @@
 const Algorithms = require('./algorithms');
 const Transactions = require('./transactions');
 const utils = require('./utils');
+const fastRoot = require('merkle-lib/fastRoot');
+const crypto = require('crypto');
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,26 +17,50 @@ const Template = function(jobId, config, rpcData, placeholder) {
 
   // Template Variables
   this.target = _this.rpcData.target ? BigInt(`0x${ _this.rpcData.target }`) : utils.bigIntFromBitsHex(_this.rpcData.bits);
-  this.difficulty = parseFloat((Algorithms.sha256d.diff / Number(_this.target)).toFixed(9));
+  this.difficulty = parseFloat((Algorithms.autolykos2.diff / Number(_this.target)).toFixed(9));
   this.previous = utils.reverseByteOrder(Buffer.from(_this.rpcData.previousblockhash, 'hex')).toString('hex');
   this.generation = new Transactions(config, rpcData).handleGeneration(placeholder);
   this.steps = utils.getMerkleSteps(_this.rpcData.transactions);
 
   // Manage Serializing Block Headers
-  this.handleHeader = function(version, merkleRoot, nTime, nonce) {
-
+  this.handleHeader = function(merkleRoot, nonce) {
     // Initialize Header/Pointer
     let position = 0;
     let header = Buffer.alloc(80);
-
+  
+    if (nonce !== undefined) {
+      header = Buffer.alloc(92);
+    }
+  
     // Append Data to Buffer
-    header.write(nonce, position, 4, 'hex');
-    header.write(_this.rpcData.bits, position += 4, 4, 'hex');
-    header.write(nTime, position += 4, 4, 'hex');
-    header.write(utils.reverseBuffer(merkleRoot).toString('hex'), position += 4, 32, 'hex');
-    header.write(_this.rpcData.previousblockhash, position += 32, 32, 'hex');
-    header.writeUInt32BE(version, position += 32);
-    header = utils.reverseBuffer(header);
+    header.writeUInt32BE(_this.rpcData.height, position); // Height (4 bytes)
+    position += 4;
+  
+    if (nonce !== undefined) {
+      header.write(nonce, position, 'hex'); // Nonce (8 bytes in hex)
+      position += 8;
+      header.write('00000000', position, 'hex'); // Padding (4 bytes)
+      position += 4;
+    }
+  
+    header.writeUInt32BE(parseInt(_this.rpcData.bits, 16), position); // Bits (4 bytes, hex parsed to integer)
+    position += 4;
+
+    header.writeUInt32BE(_this.rpcData.curtime, position); // Time (4 bytes)
+    position += 4;
+  
+    // Merkle Root (32 bytes, hex string)
+    Buffer.from(utils.reverseBuffer(merkleRoot)).copy(header, position);
+    position += 32;
+  
+    // Previous Block Hash (32 bytes, hex string)
+    Buffer.from(_this.rpcData.previousblockhash, 'hex').copy(header, position);
+    position += 32;
+  
+    header.writeUInt32BE(5, position); // Version (4 bytes)
+  
+    header = utils.reverseBuffer(header); // Reverse the header
+  
     return header;
   };
 
@@ -59,18 +85,36 @@ const Template = function(jobId, config, rpcData, placeholder) {
   };
 
   // Manage Job Parameters for Clients
-  this.handleParameters = function(cleanJobs) {
+  this.handleParameters = function(client, cleanJobs) {
+    // Check if Client has ExtraNonce Set
+    if (!client.extraNonce1) {
+      client.extraNonce1 = utils.extraNonceCounter(2).next();
+    }
+
+    // Establish Hashing Algorithms
+    //const headerDigest = Algorithms.sha256d.hash();
+    const coinbaseDigest = Algorithms.sha256d.hash();
+    const extraNonce1Buffer = Buffer.from(client.extraNonce1, 'hex');
+    const randomNonce2Buffer = Buffer.alloc(6);
+    crypto.randomFillSync(randomNonce2Buffer);
+    _this.randomNonce2Buffer = randomNonce2Buffer.toString('hex');
+
+    // Generate Coinbase Buffer
+    const coinbaseBuffer = _this.handleCoinbase(extraNonce1Buffer, randomNonce2Buffer);
+    const coinbaseHash = coinbaseDigest(coinbaseBuffer);
+    const hashes = utils.convertHashToBuffer(_this.rpcData.transactions);
+    const transactions = [coinbaseHash].concat(hashes);
+    const merkleRoot = fastRoot(transactions, utils.sha256d);
+    _this.merkleRoot = merkleRoot.toString('hex');
+    _this.msg = Algorithms.autolykos2.blake2b256(_this.handleHeader(merkleRoot)).toString('hex');
+    
     return [
       _this.jobId,
-      _this.previous,
-      _this.generation[0].toString('hex'),
-      _this.generation[1].toString('hex'),
-      _this.steps.map((step) => step.toString('hex')),
-      utils.packInt32BE(_this.rpcData.version).toString('hex'),
-      _this.rpcData.bits,
-      utils.packUInt32BE(_this.rpcData.curtime).toString('hex'),
+      _this.msg,
+      _this.rpcData.height,
       cleanJobs
-    ];
+    ];    
+
   };
 
   // Check Previous Submissions for Duplicates

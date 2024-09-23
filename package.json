@@ -1,6 +1,6 @@
 {
-  "name": "foundation-v2-template",
-  "version": "0.0.1",
+  "name": "foundation-v2-blocx",
+  "version": "0.0.24",
   "description": "A high performance Stratum pool-server written in Node.js",
   "main": "./exports.js",
   "keywords": [
@@ -9,9 +9,9 @@
     "mining",
     "pool"
   ],
-  "homepage": "https://github.com/blinkhash/foundation-v2-template",
+  "homepage": "https://github.com/blinkhash/foundation-v2-blocx",
   "bugs": {
-    "url": "https://github.com/blinkhash/foundation-v2-template/issues"
+    "url": "https://github.com/blinkhash/foundation-v2-blocx/issues"
   },
   "license": "GPL-3.0",
   "author": {
@@ -39,14 +39,15 @@
   "contributors": [],
   "repository": {
     "type": "git",
-    "url": "https://github.com/blinkhash/foundation-v2-template.git"
+    "url": "https://github.com/blinkhash/foundation-v2-blocx.git"
   },
   "dependencies": {
     "async": "^3.2.3",
     "bchaddrjs": "^0.5.2",
     "bech32": "0.0.3",
+    "bigint-buffer": "^1.1.5",
     "bindings": "^1.3.0",
-    "blake2b": "^2.1.4",
+    "blake2": "^5.0.0",
     "bs58check": "^2.1.2",
     "colors": "^1.4.0",
     "libsodium": "^0.7.3",
@@ -56,6 +57,7 @@
     "nodemon": "^2.0.19",
     "pm2": "^5.2.0",
     "sha3": "2.1.4",
+    "uint64be": "^3.0.0",
     "uuid": "^8.3.2",
     "zeromq": "^5.2.8"
   },

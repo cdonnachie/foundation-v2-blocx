@@ -1,7 +1,6 @@
 const Algorithms = require('./algorithms');
 const Template = require('./template');
 const events = require('events');
-const fastRoot = require('merkle-lib/fastRoot');
 const utils = require('./utils');
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,7 +18,7 @@ const Manager = function(config, configMain) {
   this.currentJob = null;
 
   // ExtraNonce Variables
-  this.extraNonceCounter = utils.extraNonceCounter(4);
+  this.extraNonceCounter = utils.extraNonceCounter(2);
   this.extraNoncePlaceholder = Buffer.from('f000000ff111111f', 'hex');
   this.extraNonce2Size = _this.extraNoncePlaceholder.length - _this.extraNonceCounter.size;
 
@@ -74,12 +73,8 @@ const Manager = function(config, configMain) {
     let difficulty = client.difficulty;
     const submitTime = Date.now();
     const job = _this.validJobs[jobId];
-    const nTimeInt = parseInt(submission.nTime, 16);
 
-    // Establish Hashing Algorithms
-    const headerDigest = Algorithms.sha256d.hash();
-    const coinbaseDigest = Algorithms.sha256d.hash();
-    const blockDigest = Algorithms.sha256d.hash();
+    const nonce = submission.extraNonce1 + submission.extraNonce2;
 
     // Share is Invalid
     const shareError = function(error) {
@@ -106,31 +101,15 @@ const Manager = function(config, configMain) {
     if (submission.extraNonce2.length / 2 !== _this.extraNonce2Size) {
       return shareError([20, 'incorrect size of extranonce2']);
     }
-    if (submission.nTime.length !== 8) {
-      return shareError([20, 'incorrect size of ntime']);
-    }
-    if (nTimeInt < job.rpcData.curtime || nTimeInt > (submitTime / 1000 | 0) + 7200) {
-      return shareError([20, 'ntime out of range']);
-    }
-    if (submission.nonce.length !== 8) {
+    if (nonce.length !== 16) {
       return shareError([20, 'incorrect size of nonce']);
     }
     if (!client.addrPrimary) {
       return shareError([20, 'worker address isn\'t set properly']);
     }
-    if (!job.handleSubmissions([submission.extraNonce1, submission.extraNonce2, submission.nTime, submission.nonce])) {
-      return shareError([22, 'duplicate share']);
-    }
 
-    // Check for AsicBoost Support
-    let version = job.rpcData.version;
-    if (submission.asicboost && submission.versionBit !== undefined) {
-      const vBit = parseInt('0x' + submission.versionBit);
-      const vMask = parseInt('0x' + submission.versionMask);
-      if ((vBit & ~vMask) !== 0) {
-        return shareError([20, 'invalid version bit']);
-      }
-      version = (version & ~vMask) | (vBit & vMask);
+    if (!job.handleSubmissions([submission.extraNonce1, submission.extraNonce2, job.msg])) {
+      return shareError([22, 'duplicate share']);
     }
 
     // Establish Share Information
@@ -138,24 +117,23 @@ const Manager = function(config, configMain) {
     const extraNonce1Buffer = Buffer.from(submission.extraNonce1, 'hex');
     const extraNonce2Buffer = Buffer.from(submission.extraNonce2, 'hex');
 
-    // Generate Coinbase Buffer
-    const coinbaseBuffer = job.handleCoinbase(extraNonce1Buffer, extraNonce2Buffer);
-    const coinbaseHash = coinbaseDigest(coinbaseBuffer);
-    const hashes = utils.convertHashToBuffer(job.rpcData.transactions);
-    const transactions = [coinbaseHash].concat(hashes);
-    const merkleRoot = fastRoot(transactions, utils.sha256d);
+    // Generate Header Buffer
+    const headerBuffer = Buffer.concat([Buffer.from(job.msg, 'hex'), extraNonce1Buffer, extraNonce2Buffer]);
+    const headerHash = Algorithms.autolykos2.autolykos2_hashes(headerBuffer, job.rpcData.height);
 
     // Start Generating Block Hash
-    const headerBuffer = job.handleHeader(version, merkleRoot, submission.nTime, submission.nonce);
-    const headerHash = headerDigest(headerBuffer, nTimeInt);
-    const headerBigInt = utils.bufferToBigInt(utils.reverseBuffer(headerHash));
+    const headerBigInt = utils.bufferToBigInt(headerHash);
 
     // Calculate Share Difficulty
-    const shareMultiplier = Algorithms.sha256d.multiplier;
-    const shareDiff = Algorithms.sha256d.diff / Number(headerBigInt) * shareMultiplier;
-    const blockDiffAdjusted = job.difficulty * Algorithms.sha256d.multiplier;
-    const blockHash = utils.reverseBuffer(blockDigest(headerBuffer, submission.nTime)).toString('hex');
-    const blockHex = job.handleBlocks(headerBuffer, coinbaseBuffer).toString('hex');
+    const shareMultiplier = Algorithms.autolykos2.multiplier;
+    const shareDiff = Algorithms.autolykos2.diff / Number(headerBigInt) * shareMultiplier;
+    const blockDiffAdjusted = job.difficulty * Algorithms.autolykos2.multiplier;
+    const blockHash = headerHash.toString('hex');
+    const blockHeader = job.handleHeader(Buffer.from(job.merkleRoot, 'hex'),nonce);
+
+    // Generate Coinbase Buffer
+    const coinbaseBuffer = job.handleCoinbase(extraNonce1Buffer, Buffer.from(job.randomNonce2Buffer, 'hex'));
+    const blockHex = job.handleBlocks(blockHeader, coinbaseBuffer).toString('hex');
 
     // Check if Share is Valid Block Candidate
     if (job.target >= headerBigInt) {
@@ -184,7 +162,7 @@ const Manager = function(config, configMain) {
       difficulty: difficulty,
       hash: blockHash,
       hex: blockHex,
-      header: headerHash,
+      header: headerHash.toString('hex'),
       headerDiff: headerBigInt,
       height: job.rpcData.height,
       identifier: _this.configMain.identifier || '',
