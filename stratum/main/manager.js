@@ -108,7 +108,7 @@ const Manager = function(config, configMain) {
       return shareError([20, 'worker address isn\'t set properly']);
     }
 
-    if (!job.handleSubmissions([submission.extraNonce1, submission.extraNonce2, job.msg])) {
+    if (!job.handleSubmissions([submission.extraNonce1, submission.extraNonce2, client.msg])) {
       return shareError([22, 'duplicate share']);
     }
 
@@ -118,7 +118,7 @@ const Manager = function(config, configMain) {
     const extraNonce2Buffer = Buffer.from(submission.extraNonce2, 'hex');
 
     // Generate Header Buffer
-    const headerBuffer = Buffer.concat([Buffer.from(job.msg, 'hex'), extraNonce1Buffer, extraNonce2Buffer]);
+    const headerBuffer = Buffer.concat([Buffer.from(client.msg, 'hex'), extraNonce1Buffer, extraNonce2Buffer]);
     const headerHash = Algorithms.autolykos2.autolykos2_hashes(headerBuffer, job.rpcData.height);
 
     // Start Generating Block Hash
@@ -129,10 +129,10 @@ const Manager = function(config, configMain) {
     const shareDiff = Algorithms.autolykos2.diff / Number(headerBigInt) * shareMultiplier;
     const blockDiffAdjusted = job.difficulty * Algorithms.autolykos2.multiplier;
     const blockHash = headerHash.toString('hex');
-    const blockHeader = job.handleHeader(Buffer.from(job.merkleRoot, 'hex'),nonce);
+    const blockHeader = job.handleHeader(Buffer.from(client.merkleRoot, 'hex'),nonce);
 
     // Generate Coinbase Buffer
-    const coinbaseBuffer = job.handleCoinbase(extraNonce1Buffer, Buffer.from(job.randomNonce2Buffer, 'hex'));
+    const coinbaseBuffer = job.handleCoinbase(extraNonce1Buffer, Buffer.from(client.randomNonce2Buffer, 'hex'));
     const blockHex = job.handleBlocks(blockHeader, coinbaseBuffer).toString('hex');
 
     // Check if Share is Valid Block Candidate

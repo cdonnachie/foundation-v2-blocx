@@ -97,7 +97,7 @@ const Template = function(jobId, config, rpcData, placeholder) {
     const extraNonce1Buffer = Buffer.from(client.extraNonce1, 'hex');
     const randomNonce2Buffer = Buffer.alloc(6);
     crypto.randomFillSync(randomNonce2Buffer);
-    _this.randomNonce2Buffer = randomNonce2Buffer.toString('hex');
+    client.randomNonce2Buffer = randomNonce2Buffer.toString('hex');
 
     // Generate Coinbase Buffer
     const coinbaseBuffer = _this.handleCoinbase(extraNonce1Buffer, randomNonce2Buffer);
@@ -105,12 +105,12 @@ const Template = function(jobId, config, rpcData, placeholder) {
     const hashes = utils.convertHashToBuffer(_this.rpcData.transactions);
     const transactions = [coinbaseHash].concat(hashes);
     const merkleRoot = fastRoot(transactions, utils.sha256d);
-    _this.merkleRoot = merkleRoot.toString('hex');
-    _this.msg = Algorithms.autolykos2.blake2b256(_this.handleHeader(merkleRoot)).toString('hex');
+    client.merkleRoot = merkleRoot.toString('hex');
+    client.msg = Algorithms.autolykos2.blake2b256(_this.handleHeader(merkleRoot)).toString('hex');
     
     return [
       _this.jobId,
-      _this.msg,
+      client.msg,
       _this.rpcData.height,
       cleanJobs
     ];    
