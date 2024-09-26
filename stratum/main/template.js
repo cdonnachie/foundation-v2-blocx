@@ -105,8 +105,9 @@ const Template = function(jobId, config, rpcData, placeholder) {
     const hashes = utils.convertHashToBuffer(_this.rpcData.transactions);
     const transactions = [coinbaseHash].concat(hashes);
     const merkleRoot = fastRoot(transactions, utils.sha256d);
+    const headerWithoutNonce = _this.handleHeader(merkleRoot);
     client.merkleRoot = merkleRoot.toString('hex');
-    client.msg = Algorithms.autolykos2.blake2b256(_this.handleHeader(merkleRoot)).toString('hex');
+    client.msg = Algorithms.autolykos2.blake2b256(headerWithoutNonce.toString('hex')).toString('hex');
     
     return [
       _this.jobId,
